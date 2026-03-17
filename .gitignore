@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production.local
+
+# Vercel
+.vercel
+
+# Build
+dist/
+build/
+
+# Backend runtime artifacts (optional – don’t commit generated XMLs/certs)
+backend/generated_xmls/
+backend/certificates/

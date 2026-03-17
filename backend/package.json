@@ -1,0 +1,32 @@
+{
+  "name": "qbo-zatca-connector",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/secp256k1": "^3.0.0",
+    "@xmldom/xmldom": "^0.8.11",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "elliptic": "^6.6.1",
+    "express": "^5.2.1",
+    "handlebars": "^4.7.8",
+    "intuit-oauth": "^4.2.2",
+    "mongodb": "^7.1.0",
+    "mongoose": "^9.2.3",
+    "nodemon": "^3.1.14",
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.39.1",
+    "qrcode": "^1.5.4",
+    "xml-c14n": "^0.0.6",
+    "xml-crypto": "^6.1.2",
+    "xpath": "^0.0.34"
+  }
+}
