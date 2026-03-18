@@ -418,6 +418,23 @@ header {
   color: #b91c1c;
 }
 
+.status-warning-stuck {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px dashed #f59e0b;
+  cursor: help;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+
 .action-btn {
   color: var(--primary-accent);
   text-decoration: none;

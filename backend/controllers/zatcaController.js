@@ -72,6 +72,19 @@ const submitInvoice = async (req, res) => {
       });
     }
 
+    // --- NEW: SUBMITTING GUARD ---
+    // Check if there is a global "SUBMITTING" record that is not this invoice.
+    // This prevents generating a new invoice while the previous one is in an unknown state.
+    const lastSub = await zatcaStorage.getLastSubmission();
+    if (lastSub && lastSub.zatcaStatus === 'SUBMITTING' && lastSub.invoiceNumber !== String(docNumber)) {
+      return res.status(409).json({
+        error: 'Chain Blocked',
+        message: `A previous submission (Invoice ${lastSub.invoiceNumber}) is stuck in 'SUBMITTING' state. Please resolve its status before submitting a new invoice.`,
+        status: 'SUBMITTING_BLOCKED',
+        blockedInvoice: lastSub.invoiceNumber
+      });
+    }
+
     console.log(`--- Submitting Invoice: ${targetInvoice.DocNumber} ---`);
 
     const { realmId, oauthclient } = req;
@@ -84,13 +97,16 @@ const submitInvoice = async (req, res) => {
 
     const nextICV = await zatcaStorage.getNextICV();
     const previousInvoiceHash = await zatcaStorage.getLastInvoiceHash();
-    console.log(`--- ICV: ${nextICV}, PIH from last submission ---`);
+    console.log(`--- ICV: ${nextICV}, PIH: ${previousInvoiceHash.substring(0, 10)}... ---`);
 
     const zatcaData = mapQBOInvoiceToZatca(targetInvoice, customerInfo);
     zatcaData.icv = String(nextICV);
     zatcaData.previousInvoiceHash = previousInvoiceHash;
-    const invoiceUuid = crypto.randomUUID();
+
+    // Use existing UUID if we are re-trying a SUBMITTING invoice
+    const invoiceUuid = (lastSub && lastSub.invoiceNumber === String(docNumber)) ? lastSub.uuid : crypto.randomUUID();
     zatcaData.uuid = invoiceUuid;
+    
     if (isCreditNote) {
       zatcaData.invoiceType = '381';
       zatcaData.invoiceDocumentReference = invoiceDocumentReference || '';
@@ -152,6 +168,20 @@ const submitInvoice = async (req, res) => {
     const secret = (process.env.ZATCA_SECRET || process.env.secret || process.env.SECRET || '').trim().replace(/^['"]|['"]$/g, '');
     if (secret) {
       try {
+        // --- PRE-SAVE AS SUBMITTING ---
+        // Record intent to ensure PIH chain is maintained even after timeout
+        await zatcaStorage.saveSubmission({
+          uuid: invoiceUuid,
+          qboInvoiceId: targetInvoice.Id,
+          invoiceNumber: targetInvoice.DocNumber || invoiceNumber,
+          icv: nextICV,
+          invoiceHashBase64: result.invoiceHashBase64,
+          previousInvoiceHash,
+          qrCodeBase64,
+          zatcaStatus: 'SUBMITTING',
+          submittedAt: new Date().toISOString(),
+        });
+
         console.log('--- Step 7: Submitting to ZATCA Compliance API ---');
         const complianceResult = await submitInvoiceToZatca({
           signedInvoiceXml,
@@ -159,6 +189,7 @@ const submitInvoice = async (req, res) => {
           binarySecurityToken: token,
           secret,
         });
+
         // Debug: store ZATCA response in JSON file
         const debugPath = path.join(folderPath, 'zatca-response-debug.json');
         fs.writeFileSync(debugPath, JSON.stringify({
@@ -168,7 +199,7 @@ const submitInvoice = async (req, res) => {
           statusText: complianceResult.statusText,
           data: complianceResult.data,
         }, null, 2), 'utf8');
-        console.log('--- ZATCA response saved to', debugPath, '---');
+
         if (complianceResult.success) {
           console.log('--- ZATCA Compliance: SUCCESS ---');
 
@@ -200,7 +231,22 @@ const submitInvoice = async (req, res) => {
             timestamp: new Date().toISOString(),
           });
         }
+
         console.error('--- ZATCA Compliance: FAILED ---', complianceResult.status, complianceResult.statusText);
+        
+        // Final update to REJECTED so it doesn't block the next attempt
+        await zatcaStorage.saveSubmission({
+          uuid: invoiceUuid,
+          qboInvoiceId: targetInvoice.Id,
+          invoiceNumber: targetInvoice.DocNumber || invoiceNumber,
+          icv: nextICV,
+          invoiceHashBase64: result.invoiceHashBase64,
+          previousInvoiceHash,
+          zatcaStatus: 'ZATCA_REJECTED',
+          zatcaResponse: complianceResult.data,
+          submittedAt: new Date().toISOString(),
+        });
+
         return res.status(502).json({
           success: false,
           status: 'ZATCA_REJECTED',
@@ -222,6 +268,7 @@ const submitInvoice = async (req, res) => {
         });
       }
     }
+
 
     console.log('--- Step 7 skipped: No secret in .env for ZATCA submission ---');
 

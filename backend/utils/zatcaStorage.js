@@ -15,7 +15,9 @@ const ZATCA_FIRST_INVOICE_HASH = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMm
  * Only counts CLEARED submissions for the chain.
  */
 async function getNextICV() {
-  const cleared = await Submission.find({ zatcaStatus: 'CLEARED' }).lean();
+  const cleared = await Submission.find({ 
+    zatcaStatus: { $in: ['CLEARED', 'SUBMITTING'] } 
+  }).lean();
   const maxIcv = cleared.length > 0
     ? Math.max(...cleared.map((s) => s.icv || 0))
     : 0;
@@ -24,16 +26,29 @@ async function getNextICV() {
 
 /**
  * Get the previous invoice hash (base64) for PIH.
- * Returns ZATCA first-invoice constant if no previous CLEARED submission.
+ * Returns ZATCA first-invoice constant if no previous CLEARED/SUBMITTING submission.
  */
 async function getLastInvoiceHash() {
-  const last = await Submission.findOne({ zatcaStatus: 'CLEARED' })
-    .sort({ submittedAt: -1 })
+  const last = await Submission.findOne({ 
+    zatcaStatus: { $in: ['CLEARED', 'SUBMITTING'] } 
+  })
+    .sort({ icv: -1, submittedAt: -1 })
     .select('invoiceHashBase64')
     .lean();
   if (!last || !last.invoiceHashBase64) return ZATCA_FIRST_INVOICE_HASH;
   return last.invoiceHashBase64;
 }
+
+/**
+ * Get the last submission (regardless of status).
+ */
+async function getLastSubmission() {
+  return Submission.findOne({})
+    .sort({ icv: -1, submittedAt: -1 })
+    .lean();
+}
+
+
 
 /**
  * Save a submission record. Call on successful ZATCA CLEARED response.

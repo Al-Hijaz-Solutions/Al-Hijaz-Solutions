@@ -719,16 +719,50 @@ function App() {
                             <td style={{ fontWeight: 700 }}>{parseFloat(item.TotalAmt).toLocaleString()}</td>
                             <td>
                               {(() => {
-                                const status = zatcaStatusMap[item.DocNumber] || 'PENDING';
-                                const statusClass = status === 'CLEARED' ? 'status-success' : status === 'REJECTED' || status === 'ZATCA_REJECTED' ? 'status-rejected' : 'status-pending';
-                                const statusIcon = status === 'CLEARED' ? <ShieldCheck size={10} /> : status === 'REJECTED' || status === 'ZATCA_REJECTED' ? <X size={10} /> : <Activity size={10} />;
+                                const status = zatcaStatusMap[item.DocNumber];
+                                if (!status || status === 'PENDING') {
+                                  return (
+                                    <span className="status-badge status-pending">
+                                      <Activity size={10} /> PENDING
+                                    </span>
+                                  );
+                                }
+
+                                if (status === 'CLEARED') {
+                                  return (
+                                    <span className="status-badge status-success">
+                                      <ShieldCheck size={10} /> {status}
+                                    </span>
+                                  );
+                                }
+
+                                if (status === 'SUBMITTING') {
+                                  return (
+                                    <span 
+                                      className="status-badge status-warning-stuck" 
+                                      title="This submission was interrupted (possibly due to a timeout). Click 'Send to ZATCA' to resolve it."
+                                    >
+                                      <Activity className="animate-spin" size={10} /> STUCK (RETRY)
+                                    </span>
+                                  );
+                                }
+
+                                if (status === 'ZATCA_REJECTED' || status === 'REJECTED') {
+                                  return (
+                                    <span className="status-badge status-rejected" title="Submission failed. Check details or fix in QuickBooks.">
+                                      <X size={10} /> REJECTED
+                                    </span>
+                                  );
+                                }
+
                                 return (
-                                  <span className={`status-badge ${statusClass}`}>
-                                    {statusIcon} {status}
+                                  <span className="status-badge status-pending">
+                                    <Activity size={10} /> {status}
                                   </span>
                                 );
                               })()}
                             </td>
+
                             <td>
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 {/* <button
