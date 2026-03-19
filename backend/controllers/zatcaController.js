@@ -75,6 +75,7 @@ const submitInvoice = async (req, res) => {
     // --- NEW: SUBMITTING GUARD ---
     // Check if there is a global "SUBMITTING" record that is not this invoice.
     // This prevents generating a new invoice while the previous one is in an unknown state.
+
     const lastSub = await zatcaStorage.getLastSubmission();
     if (lastSub && lastSub.zatcaStatus === 'SUBMITTING' && lastSub.invoiceNumber !== String(docNumber)) {
       return res.status(409).json({
@@ -84,6 +85,8 @@ const submitInvoice = async (req, res) => {
         blockedInvoice: lastSub.invoiceNumber
       });
     }
+
+
 
     console.log(`--- Submitting Invoice: ${targetInvoice.DocNumber} ---`);
 
@@ -95,18 +98,30 @@ const submitInvoice = async (req, res) => {
     const customerResponse = await oauthclient.makeApiCall({ url: customerUrl, method: 'GET', headers: { Accept: 'application/json' } });
     const customerInfo = JSON.parse(customerResponse.body).Customer;
 
-    const nextICV = await zatcaStorage.getNextICV();
-    const previousInvoiceHash = await zatcaStorage.getLastInvoiceHash();
-    console.log(`--- ICV: ${nextICV}, PIH: ${previousInvoiceHash.substring(0, 10)}... ---`);
+    let nextICV;
+    let previousInvoiceHash;
+    let invoiceUuid;
+
+    // --- REUSE DB PARAMETERS IF RETRYING A SUBMITTING INVOICE ---
+    if (lastSub && lastSub.invoiceNumber === String(docNumber) && lastSub.zatcaStatus === 'SUBMITTING') {
+      console.log(`--- Resuming interrupted submission for Invoice: ${docNumber} ---`);
+      nextICV = lastSub.icv;
+      previousInvoiceHash = lastSub.previousInvoiceHash;
+      invoiceUuid = lastSub.uuid;
+    } else {
+      // NEW INVOICE - GENERATE FRESH
+      nextICV = await zatcaStorage.getNextICV();
+      previousInvoiceHash = await zatcaStorage.getLastInvoiceHash();
+      invoiceUuid = crypto.randomUUID();
+      console.log(`--- New submission parameters generated - ICV: ${nextICV}, PIH: ${previousInvoiceHash.substring(0, 10)}... ---`);
+    }
 
     const zatcaData = mapQBOInvoiceToZatca(targetInvoice, customerInfo);
     zatcaData.icv = String(nextICV);
     zatcaData.previousInvoiceHash = previousInvoiceHash;
-
-    // Use existing UUID if we are re-trying a SUBMITTING invoice
-    const invoiceUuid = (lastSub && lastSub.invoiceNumber === String(docNumber)) ? lastSub.uuid : crypto.randomUUID();
     zatcaData.uuid = invoiceUuid;
-    
+
+
     if (isCreditNote) {
       zatcaData.invoiceType = '381';
       zatcaData.invoiceDocumentReference = invoiceDocumentReference || '';
@@ -233,7 +248,7 @@ const submitInvoice = async (req, res) => {
         }
 
         console.error('--- ZATCA Compliance: FAILED ---', complianceResult.status, complianceResult.statusText);
-        
+
         // Final update to REJECTED so it doesn't block the next attempt
         await zatcaStorage.saveSubmission({
           uuid: invoiceUuid,
